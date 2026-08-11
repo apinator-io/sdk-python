@@ -59,12 +59,16 @@ client = Apinator(
 
 @app.route("/auth/channel", methods=["POST"])
 def auth_channel():
-    socket_id = request.form["socket_id"]
-    channel_name = request.form["channel_name"]
+    body = request.get_json()
+    socket_id = body["socket_id"]
+    channel_name = body["channel_name"]
 
     auth = client.authenticate_channel(socket_id, channel_name)
     return jsonify(auth)
 ```
+
+The client SDKs POST a JSON body (`Content-Type: application/json`), so read it with
+`request.get_json()` — `request.form` will be empty.
 
 For presence channels, include channel data with user information:
 
@@ -73,8 +77,9 @@ import json
 
 @app.route("/auth/channel", methods=["POST"])
 def auth_channel():
-    socket_id = request.form["socket_id"]
-    channel_name = request.form["channel_name"]
+    body = request.get_json()
+    socket_id = body["socket_id"]
+    channel_name = body["channel_name"]
 
     channel_data = None
     if channel_name.startswith("presence-"):

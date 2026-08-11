@@ -22,8 +22,16 @@ client = Apinator(
 
 @app.route("/auth/channel", methods=["POST"])
 def auth_channel():
-    socket_id = request.form["socket_id"]
-    channel_name = request.form["channel_name"]
+    # The client SDKs POST a JSON body: {"socket_id": ..., "channel_name": ...}
+    body = request.get_json(silent=True) or {}
+    socket_id = body.get("socket_id")
+    channel_name = body.get("channel_name")
+
+    if not socket_id or not channel_name:
+        return jsonify({"error": "Missing socket_id or channel_name"}), 400
+
+    # TODO: Add your own authorization logic here.
+    # Check if the current user is allowed to subscribe to this channel.
 
     # For presence channels, include channel data
     channel_data = None

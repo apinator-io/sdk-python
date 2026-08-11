@@ -55,9 +55,10 @@ client = Apinator(
     cluster="eu",
 )
 
-# In your auth route handler:
-socket_id = request.form["socket_id"]
-channel_name = request.form["channel_name"]
+# In your auth route handler — the client SDKs POST a JSON body:
+body = request.get_json()
+socket_id = body["socket_id"]
+channel_name = body["channel_name"]
 
 auth = client.authenticate_channel(socket_id, channel_name)
 # Return auth as JSON response
