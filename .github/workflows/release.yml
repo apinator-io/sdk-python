@@ -14,11 +14,11 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
     steps:
+      # Versioning lives in release-please-config.json and
+      # .release-please-manifest.json; passing release-type here would make
+      # the action ignore both and fall back to 0.1.0 (no v1.0.0 tag exists).
       - uses: googleapis/release-please-action@v4
         id: release
-        with:
-          release-type: python
-          package-name: apinator-server
 
   publish:
     needs: release-please
