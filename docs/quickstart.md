@@ -96,8 +96,12 @@ def auth_channel():
 
 Verify incoming webhooks to ensure they are authentic:
 
+Use the webhook endpoint's signing secret (`whsec_...`, shown in the console per
+endpoint), not the app's API secret:
+
 ```python
 import json
+import os
 from flask import Flask, request, abort
 from apinator import Apinator
 
@@ -105,21 +109,30 @@ app = Flask(__name__)
 client = Apinator(
     app_id="your-app-id",
     key="your-app-key",
-    secret="your-webhook-secret",
+    secret="your-app-secret",
     cluster="eu",
 )
+WEBHOOK_SECRET = os.environ["APINATOR_WEBHOOK_SECRET"]
+processed_ids: set[str] = set()  # use a persistent store in production
 
 @app.route("/webhooks/apinator", methods=["POST"])
 def handle_webhook():
     headers = dict(request.headers)
     body = request.get_data(as_text=True)
 
-    if not client.verify_webhook(headers, body, max_age=300):
+    if not client.verify_webhook(WEBHOOK_SECRET, headers, body, max_age=300):
         abort(401)
 
     payload = json.loads(body)
-    # Process the webhook payload
-    print(f"Received event: {payload}")
+    # {"id": "...", "event": "member_added", "app_id": "...", "channel": "presence-room",
+    #  "user_id": "42", "time_ms": 1760000000000}
+
+    # Deliveries are at-least-once: dedupe on id.
+    if payload["id"] in processed_ids:
+        return "", 200
+    processed_ids.add(payload["id"])
+
+    print(f"Received {payload['event']} on {payload.get('channel')}")
     return "", 200
 ```
 

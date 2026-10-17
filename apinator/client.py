@@ -8,12 +8,12 @@ import json
 import time
 import urllib.request
 import urllib.error
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import quote, urlencode
 
 from .crypto import sign_request
 from .auth import authenticate_channel as auth_channel
-from .webhook import verify_webhook as verify_webhook_signature
+from .webhook import HeaderValue, verify_webhook as verify_webhook_signature
 from .errors import ValidationError, AuthenticationError, ApiError
 
 
@@ -154,22 +154,38 @@ class Apinator:
 
     def verify_webhook(
         self,
-        headers: dict[str, str],
+        webhook_secret: str,
+        headers: Mapping[str, HeaderValue],
         body: str,
         max_age: int | None = None
     ) -> bool:
         """
         Verify a webhook signature.
 
+        Webhooks are signed with the webhook endpoint's own signing secret
+        (``whsec_...``, shown in the console per endpoint), not with the app's
+        API secret, so it must be passed explicitly.
+
         Args:
+            webhook_secret: The webhook endpoint's signing secret (``whsec_...``)
             headers: HTTP headers from webhook request
-            body: Webhook body as string
-            max_age: Optional max age in seconds
+            body: Raw webhook body as string, exactly as received
+            max_age: Optional max age in seconds (300 recommended). When set,
+                timestamps older than ``max_age`` or more than 300 seconds in
+                the future are rejected.
 
         Returns:
             True if signature is valid
+
+        Raises:
+            ValidationError: If ``webhook_secret`` is not a non-empty string
         """
-        return verify_webhook_signature(self.secret, headers, body, max_age)
+        if not isinstance(webhook_secret, str) or not webhook_secret:
+            raise ValidationError(
+                "verify_webhook requires the webhook signing secret (whsec_...) "
+                "as its first argument"
+            )
+        return verify_webhook_signature(webhook_secret, headers, body, max_age)
 
     def _request(
         self,

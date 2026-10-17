@@ -314,22 +314,36 @@ class TestAuthenticateChannel:
 class TestVerifyWebhook:
     """Tests for verify_webhook method"""
 
-    def test_verify_webhook(self):
-        """verify_webhook should verify signature"""
-        client = Apinator(TEST_APP_ID, TEST_KEY, TEST_SECRET, cluster=TEST_CLUSTER)
+    WEBHOOK_SECRET = "whsec_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    BODY = (
+        '{"id":"cbb368a1-bc93-42bc-b939-51c7352cbd03","event":"member_added",'
+        '"app_id":"test-app-123","channel":"presence-room","user_id":"42",'
+        '"time_ms":1760000000000}'
+    )
 
-        # Create valid signature
+    def _headers(self, secret, timestamp):
         from apinator.crypto import sign_webhook_payload
-        timestamp = "1700000000"
-        body = '{"event":"test"}'
-        signature = sign_webhook_payload(TEST_SECRET, timestamp, body)
-
-        headers = {
-            "X-Realtime-Signature": signature,
-            "X-Realtime-Timestamp": timestamp
+        signature = sign_webhook_payload(secret, timestamp, self.BODY)
+        return {
+            "X-Realtime-Signature": f"sha256={signature}",
+            "X-Realtime-Timestamp": timestamp,
         }
 
-        assert client.verify_webhook(headers, body) is True
+    def test_verify_webhook(self):
+        """verify_webhook should verify a signature made with the webhook secret"""
+        import time
+        client = Apinator(TEST_APP_ID, TEST_KEY, TEST_SECRET, cluster=TEST_CLUSTER)
+        headers = self._headers(self.WEBHOOK_SECRET, str(int(time.time())))
+
+        assert client.verify_webhook(self.WEBHOOK_SECRET, headers, self.BODY, max_age=300) is True
+
+    def test_verify_webhook_does_not_use_api_secret(self):
+        """A signature made with the app's API secret must not verify"""
+        import time
+        client = Apinator(TEST_APP_ID, TEST_KEY, TEST_SECRET, cluster=TEST_CLUSTER)
+        headers = self._headers(TEST_SECRET, str(int(time.time())))
+
+        assert client.verify_webhook(self.WEBHOOK_SECRET, headers, self.BODY) is False
 
     def test_verify_webhook_invalid(self):
         """verify_webhook should reject invalid signature"""
@@ -340,9 +354,32 @@ class TestVerifyWebhook:
             "X-Realtime-Timestamp": "1700000000"
         }
 
-        assert client.verify_webhook(headers, '{"event":"test"}') is False
+        assert client.verify_webhook(self.WEBHOOK_SECRET, headers, self.BODY) is False
 
+    def test_verify_webhook_max_age(self):
+        """max_age rejects old timestamps and timestamps >300s in the future"""
+        import time
+        client = Apinator(TEST_APP_ID, TEST_KEY, TEST_SECRET, cluster=TEST_CLUSTER)
+        now = int(time.time())
 
+        old = self._headers(self.WEBHOOK_SECRET, str(now - 400))
+        assert client.verify_webhook(self.WEBHOOK_SECRET, old, self.BODY) is True
+        assert client.verify_webhook(self.WEBHOOK_SECRET, old, self.BODY, max_age=300) is False
+
+        future = self._headers(self.WEBHOOK_SECRET, str(now + 600))
+        assert client.verify_webhook(self.WEBHOOK_SECRET, future, self.BODY, max_age=300) is False
+
+    def test_verify_webhook_requires_secret(self):
+        """verify_webhook raises when the webhook secret is missing or misplaced"""
+        import time
+        client = Apinator(TEST_APP_ID, TEST_KEY, TEST_SECRET, cluster=TEST_CLUSTER)
+        headers = self._headers(self.WEBHOOK_SECRET, str(int(time.time())))
+
+        with pytest.raises(ValidationError):
+            client.verify_webhook("", headers, self.BODY)
+        with pytest.raises(ValidationError):
+            # Old call shape: headers first
+            client.verify_webhook(headers, self.BODY, 300)  # type: ignore[arg-type]
 class TestRequestSigning:
     """Tests for request signing"""
 

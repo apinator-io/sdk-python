@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 from io import BytesIO
 from unittest.mock import patch
@@ -9,6 +10,7 @@ import pytest
 from apinator import Apinator
 from apinator.crypto import sign_request, sign_channel, sign_webhook_payload
 from apinator.auth import authenticate_channel
+from apinator.webhook import verify_webhook
 from apinator.errors import AuthenticationError
 
 
@@ -19,6 +21,15 @@ def _load_fixture(name: str):
     path = ROOT / "backend" / "specs" / "conformance" / name
     if not path.exists():
         pytest.skip(f"Conformance fixture not available: {name} (only runs inside monorepo)")
+    return json.loads(path.read_text())
+
+
+def _load_webhook_fixture():
+    # The webhook fixture is shared from the Node SDK (sdks/node/test/fixtures),
+    # which also carries the verification cases.
+    path = ROOT / "sdks" / "node" / "test" / "fixtures" / "webhook-signature.v1.json"
+    if not path.exists():
+        pytest.skip("Shared webhook fixture not available (only runs inside monorepo)")
     return json.loads(path.read_text())
 
 
@@ -82,12 +93,35 @@ def test_channel_fixture_vectors():
 
 
 def test_webhook_fixture_vectors():
-    fixture = _load_fixture("webhook-signature.v1.json")
+    fixture = _load_webhook_fixture()
     for case in fixture["cases"]:
         assert (
             sign_webhook_payload(case["secret"], case["timestamp"], case["body"])
             == case["expected_signature"]
         )
+
+
+def test_webhook_verify_fixture_cases():
+    fixture = _load_webhook_fixture()
+    cases = fixture["verify_cases"]
+    assert cases
+
+    for case in cases:
+        timestamp = str(int(time.time()) + case["timestamp_offset"])
+        signature = sign_webhook_payload(
+            case.get("signing_secret") or case["secret"], timestamp, case["body"]
+        )
+
+        def fill(value: str) -> str:
+            return value.replace("{timestamp}", timestamp).replace("{signature}", signature)
+
+        headers = {
+            name: [fill(v) for v in value] if isinstance(value, list) else fill(value)
+            for name, value in case["headers"].items()
+        }
+
+        valid = verify_webhook(case["secret"], headers, case["body"], case["max_age"])
+        assert valid is case["expected_valid"], case["name"]
 
 
 def test_client_parses_rfc7807_errors():
