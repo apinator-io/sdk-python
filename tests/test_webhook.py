@@ -180,3 +180,48 @@ class TestVerifyWebhook:
         bad_signature = signature[:-1] + ("0" if signature[-1] != "0" else "1")
         headers["X-Realtime-Signature"] = bad_signature
         assert verify_webhook(TEST_SECRET, headers, body) is False
+
+    def test_verify_future_timestamp_within_skew(self):
+        """Timestamps up to 300s in the future are accepted when max_age is set"""
+        timestamp = str(int(time.time()) + 60)
+        body = '{"event":"channel_occupied","channel":"test"}'
+        signature = sign_webhook_payload(TEST_SECRET, timestamp, body)
+        headers = {"X-Realtime-Signature": signature, "X-Realtime-Timestamp": timestamp}
+
+        assert verify_webhook(TEST_SECRET, headers, body, max_age=300) is True
+
+    def test_verify_future_timestamp_rejected(self):
+        """Timestamps more than 300s in the future are rejected when max_age is set"""
+        timestamp = str(int(time.time()) + 600)
+        body = '{"event":"channel_occupied","channel":"test"}'
+        signature = sign_webhook_payload(TEST_SECRET, timestamp, body)
+        headers = {"X-Realtime-Signature": signature, "X-Realtime-Timestamp": timestamp}
+
+        assert verify_webhook(TEST_SECRET, headers, body, max_age=300) is False
+        assert verify_webhook(TEST_SECRET, headers, body, max_age=3600) is False
+        # No freshness check without max_age
+        assert verify_webhook(TEST_SECRET, headers, body) is True
+
+    def test_verify_list_header_values(self):
+        """List-valued headers use their first entry"""
+        timestamp = str(int(time.time()))
+        body = '{"event":"channel_occupied","channel":"test"}'
+        signature = sign_webhook_payload(TEST_SECRET, timestamp, body)
+        headers = {
+            "x-realtime-signature": [f"sha256={signature}"],
+            "x-realtime-timestamp": [timestamp],
+        }
+
+        assert verify_webhook(TEST_SECRET, headers, body, max_age=300) is True
+
+    def test_verify_empty_list_header_rejected(self):
+        """An empty list header is treated as missing"""
+        headers = {"X-Realtime-Signature": [], "X-Realtime-Timestamp": ["1700000000"]}
+
+        assert verify_webhook(TEST_SECRET, headers, "{}") is False
+
+    def test_verify_non_ascii_signature_rejected(self):
+        """A non-ASCII signature header returns False instead of raising"""
+        headers = {"X-Realtime-Signature": "sha256=\u00e9", "X-Realtime-Timestamp": "1700000000"}
+
+        assert verify_webhook(TEST_SECRET, headers, "{}") is False

@@ -135,23 +135,44 @@ info = client.get_channel("presence-chat")
 
 ---
 
-### `verify_webhook(headers, body, max_age=None)`
+### `verify_webhook(webhook_secret, headers, body, max_age=None)`
 
-Verify a webhook signature.
+Verify a webhook signature. Webhooks are signed with the webhook endpoint's own
+signing secret (`whsec_...`, shown in the console per endpoint), not the app's
+API secret.
 
 ```python
-is_valid = client.verify_webhook(headers, body, max_age=300)
+is_valid = client.verify_webhook(
+    os.environ["APINATOR_WEBHOOK_SECRET"], headers, body, max_age=300
+)
 ```
 
 **Parameters:**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `headers` | `dict[str, str]` | HTTP headers from the webhook request |
-| `body` | `str` | Webhook body as string |
-| `max_age` | `int \| None` | Optional max age in seconds for timestamp freshness check |
+| `webhook_secret` | `str` | The webhook endpoint's signing secret (`whsec_...`) |
+| `headers` | `Mapping[str, str \| list[str]]` | HTTP headers (case-insensitive; list values use the first entry) |
+| `body` | `str` | Raw webhook body, exactly as received |
+| `max_age` | `int \| None` | Max age in seconds (300 recommended). When set, timestamps older than `max_age` or more than 300 seconds in the future are rejected |
 
 **Returns:** `bool` — `True` if the signature is valid
+
+**Raises:**
+- `ValidationError` — if `webhook_secret` is empty or not a string
+
+The signature header is
+`X-Realtime-Signature: sha256=hex(hmac_sha256(webhook_secret, "{timestamp}.{raw_body}"))`,
+with the timestamp from `X-Realtime-Timestamp`. Deliveries also carry
+`X-Realtime-Event` and `X-Realtime-Delivery-ID`. Payload:
+
+```json
+{"id": "<event uuid>", "event": "member_added", "app_id": "...", "channel": "presence-room", "user_id": "42", "time_ms": 1760000000000}
+```
+
+`event` is one of `channel_occupied`, `channel_vacated`, `member_added`,
+`member_removed` (`user_id` only on the member events); the console's test sends
+`webhook.test`. Deliveries are at-least-once, so dedupe on `id`.
 
 ---
 
@@ -189,10 +210,12 @@ auth = authenticate_channel(
 ### `verify_webhook(secret, headers, body, max_age=None)`
 
 ```python
+import os
+
 from apinator import verify_webhook
 
 is_valid = verify_webhook(
-    secret="your-webhook-secret",
+    secret=os.environ["APINATOR_WEBHOOK_SECRET"],  # whsec_...
     headers=headers,
     body=body,
     max_age=300,
@@ -203,10 +226,10 @@ is_valid = verify_webhook(
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `secret` | `str` | Webhook secret |
-| `headers` | `dict[str, str]` | HTTP headers (case-insensitive lookup) |
-| `body` | `str` | Webhook body as string |
-| `max_age` | `int \| None` | Optional max age in seconds |
+| `secret` | `str` | The webhook endpoint's signing secret (`whsec_...`), not the API secret |
+| `headers` | `Mapping[str, str \| list[str]]` | HTTP headers (case-insensitive; list values use the first entry) |
+| `body` | `str` | Raw webhook body, exactly as received |
+| `max_age` | `int \| None` | Max age in seconds (300 recommended); also rejects timestamps more than 300s in the future |
 
 **Returns:** `bool` — `True` if the signature is valid and timestamp is fresh
 

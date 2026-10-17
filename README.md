@@ -94,27 +94,47 @@ auth = client.authenticate_channel(socket_id, channel_name, channel_data)
 
 ## Webhook Verification
 
+Each webhook endpoint you create in the console has its own signing secret
+(`whsec_...`). Verify deliveries with that secret, not the app's API secret, and
+pass the raw request body exactly as received.
+
 ```python
+import json
+import os
+
 from apinator import Apinator
 
 client = Apinator(
     app_id="your-app-id",
     key="your-app-key",
-    secret="your-webhook-secret",
+    secret="your-app-secret",
     cluster="eu",
 )
+WEBHOOK_SECRET = os.environ["APINATOR_WEBHOOK_SECRET"]  # whsec_...
 
-# In your webhook route handler:
+# In your webhook route handler (Flask shown):
 headers = dict(request.headers)
 body = request.get_data(as_text=True)
 
-if client.verify_webhook(headers, body, max_age=300):
-    # Webhook is valid — process the payload
-    payload = json.loads(body)
-else:
-    # Invalid webhook
+if not client.verify_webhook(WEBHOOK_SECRET, headers, body, max_age=300):
     abort(401)
+
+payload = json.loads(body)
+# {"id": "<event uuid>", "event": "member_added", "app_id": "...",
+#  "channel": "presence-room", "user_id": "42", "time_ms": 1760000000000}
+# user_id is only present on member_added / member_removed.
+
+# Deliveries are at-least-once: skip an id you have already processed.
+if already_processed(payload["id"]):
+    return "", 200
 ```
+
+Each delivery carries `X-Realtime-Signature` (`sha256=<hex>`),
+`X-Realtime-Timestamp` (unix seconds), `X-Realtime-Event` and
+`X-Realtime-Delivery-ID`. Events: `channel_occupied`, `channel_vacated`,
+`member_added`, `member_removed`; the console's test button sends `webhook.test`.
+With `max_age` set, timestamps older than `max_age` seconds or more than 300
+seconds in the future are rejected.
 
 ## Channel Introspection
 
