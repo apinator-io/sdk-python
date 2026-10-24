@@ -24,8 +24,13 @@ jobs:
     needs: release-please
     if: needs.release-please.outputs.release_created
     runs-on: ubuntu-latest
+    # Trusted publishing: PyPI exchanges this job's GitHub OIDC token for a
+    # short-lived upload credential, so no PyPI token secret is stored.
+    # Configured on pypi.org (project -> Publishing) for owner apinator-io,
+    # repo sdk-python, workflow release.yml, environment pypi.
     environment: pypi
     permissions:
+      contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v4
@@ -35,8 +40,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install build tools
-        run: pip install build
+      - name: Install build and test tools
+        run: pip install build pytest
+
+      - name: Test
+        run: pytest tests/ -q
 
       - name: Build package
         run: python -m build

@@ -22,6 +22,12 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
+[project.urls]
+Homepage = "https://apinator.io"
+Documentation = "https://apinator.io/documentation/#sdk-python"
+Source = "https://github.com/apinator-io/sdk-python"
+Changelog = "https://github.com/apinator-io/sdk-python/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-cov>=4.0"]
 
