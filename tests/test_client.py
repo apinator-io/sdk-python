@@ -82,6 +82,8 @@ class TestTrigger:
             assert f"/apps/{TEST_APP_ID}/events" in request.full_url
             assert request.get_header('Content-type') == 'application/json'
             assert request.get_header('X-realtime-key') == TEST_KEY
+            # Cloudflare blocks urllib's default User-Agent (error 1010).
+            assert request.get_header('User-agent').startswith('apinator-server-python/')
 
             # Verify body
             body = json.loads(request.data.decode('utf-8'))

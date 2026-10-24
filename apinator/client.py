@@ -5,6 +5,7 @@ Apinator client for server-side operations
 from __future__ import annotations
 
 import json
+import platform
 import time
 import urllib.request
 import urllib.error
@@ -15,6 +16,15 @@ from .crypto import sign_request
 from .auth import authenticate_channel as auth_channel
 from .webhook import HeaderValue, verify_webhook as verify_webhook_signature
 from .errors import ValidationError, AuthenticationError, ApiError
+
+
+def _user_agent() -> str:
+    # Imported here because the package's __init__ imports this module.
+    from . import __version__
+
+    # Cloudflare in front of the API blocks urllib's default
+    # "Python-urllib/x.y" User-Agent (error 1010), so always send our own.
+    return f"apinator-server-python/{__version__} (Python {platform.python_version()})"
 
 
 class Apinator:
@@ -229,6 +239,7 @@ class Apinator:
 
         # Set headers
         req.add_header('Content-Type', 'application/json')
+        req.add_header('User-Agent', _user_agent())
         req.add_header('X-Realtime-Key', self.key)
         req.add_header('X-Realtime-Timestamp', str(timestamp))
         req.add_header('X-Realtime-Signature', signature)
