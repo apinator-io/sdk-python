@@ -7,7 +7,7 @@ from .auth import authenticate_channel
 from .webhook import verify_webhook
 from .errors import RealtimeError, AuthenticationError, ValidationError, ApiError
 
-__version__ = "1.0.0"  # x-release-please-version
+__version__ = "1.1.0"  # x-release-please-version
 __all__ = [
     "Apinator",
     "authenticate_channel",
